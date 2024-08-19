@@ -1,6 +1,7 @@
 import * as anchor from "@coral-xyz/anchor";
-import { PublicKey } from "@solana/web3.js";
+import {SystemProgram, PublicKey, Keypair } from "@solana/web3.js";
 import { Program } from "@coral-xyz/anchor";
+import { Multiple } from "../target/types/multiple";
 
 interface Vault {
 	owner: PublicKey;
@@ -11,6 +12,11 @@ interface Vault {
 	mbps: anchor.BN;
 	depositInitialized: boolean;
 }
+const initSeed = "InitializedSeed";
+
+const provider = anchor.getProvider();
+const connection = provider.connection;
+
 // retrieve the vault data and return the vault interface
 export const getVaultData = async (
 	vaultPda: PublicKey,
@@ -34,5 +40,66 @@ export const getVaultPDA = async (program: Program<Multiple>, seed: string): Pro
 		program.programId
 	);
 	return vaultPda;
+}
+
+export const setUsdcToken = async (
+	program: Program<Multiple>,
+	key: Keypair,
+	usdcToken: PublicKey
+) => {
+	const vaultPda = await getVaultPDA(program, initSeed);
+
+	const txHash = await program.methods
+		.setUsdcToken(usdcToken)
+		.accounts({
+			user: key.publicKey,
+			vault: vaultPda,
+			system_program: SystemProgram.programId,
+		})
+		.signers([key])
+		.rpc();
+
+	await connection.confirmTransaction(txHash, "confirmed");
+};
+
+export const setFeeReceiverAndFeePercentage = async (
+	program: Program<Multiple>,
+	key: Keypair,
+	feeReceiver: PublicKey,
+	fee: anchor.BN
+) => {
+	const vaultPda = await getVaultPDA(program, initSeed);
+
+	const txHash = await program.methods
+		.setFeeReceiverAndFeePercent(feeReceiver, fee)
+		.accounts({
+			user: key.publicKey,
+			vault: vaultPda,
+			system_program: SystemProgram.programId,
+		})
+		.signers([key])
+		.rpc();
+
+	await connection.confirmTransaction(txHash, "confirmed");
+}
+
+export const setDepositStatus = async (
+	program: Program<Multiple>,
+	key: Keypair,
+	status: boolean
+) => {
+	const vaultPda = await getVaultPDA(program, initSeed);
+
+	const txHash = await program.methods
+		.setDepositStatus(status)
+		.accounts({
+			user: key.publicKey,
+			vault: vaultPda,
+			system_program: SystemProgram.programId,
+		})
+		.signers([key])
+		.rpc();
+
+	await connection.confirmTransaction(txHash, "confirmed");
 }
 

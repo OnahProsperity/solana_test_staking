@@ -94,9 +94,9 @@ pub fn set_states_values(
 pub fn set_usdc_token(ctx: Context<SetUSDCToken>, usdc_token: Pubkey) -> Result<()> {
     let vault = &mut ctx.accounts.vault;
     // // only the owner can set the usdc token
-    // if vault.owner != *ctx.accounts.user.key {
-    //     return Err(ErrorCode::CallerIsNotOwner.into());
-    // }
+    if vault.owner != *ctx.accounts.user.key {
+        return Err(ErrorCode::CallerIsNotOwner.into());
+    }
 
     // usdc_token is not zero 
     if usdc_token == Pubkey::default() {
@@ -114,9 +114,9 @@ pub fn set_usdc_token(ctx: Context<SetUSDCToken>, usdc_token: Pubkey) -> Result<
 pub fn set_fee_receiver_and_fee_percent(ctx: Context<SetFeeReceiverAndFeePercent>, fee_receiver: Pubkey, fee_percent: u128) -> Result<()> {
     let vault = &mut ctx.accounts.vault;
     // only the owner can set the fee receiver and fee percent
-    // if vault.owner != *ctx.accounts.user.key {
-    //     return Err(ErrorCode::CallerIsNotOwner.into());
-    // }
+    if vault.owner != *ctx.accounts.user.key {
+        return Err(ErrorCode::CallerIsNotOwner.into());
+    }
 
     // fee_receiver is not zero 
     if fee_receiver == Pubkey::default() && fee_percent != 0 {
@@ -140,9 +140,9 @@ pub fn set_fee_receiver_and_fee_percent(ctx: Context<SetFeeReceiverAndFeePercent
 pub fn set_deposit_status(ctx: Context<SetDepositStatus>, status: bool) -> Result<()> {
     let vault = &mut ctx.accounts.vault;
     // only the owner can disable the deposit_initialized
-    // if vault.owner != *ctx.accounts.user.key {
-    //     return Err(ErrorCode::CallerIsNotOwner.into());
-    // }
+    if vault.owner != *ctx.accounts.user.key {
+        return Err(ErrorCode::CallerIsNotOwner.into());
+    }
 
     vault.deposit_initialized = status;
     // emit the deposit status event

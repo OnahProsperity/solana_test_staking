@@ -2,7 +2,13 @@ import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
 import { Multiple } from "../target/types/multiple";
 import { PublicKey, SystemProgram, LAMPORTS_PER_SOL } from "@solana/web3.js";
-import { getVaultData, getVaultPDA } from "./utils";
+import {
+	getVaultData,
+	getVaultPDA,
+	setUsdcToken,
+	setFeeReceiverAndFeePercentage,
+	setDepositStatus,
+} from "./utils";
 import { assert, expect } from "chai";
 import { execSync } from "child_process";
 
@@ -20,45 +26,34 @@ const minimum_deposit = new anchor.BN(1000);
 const fee_percent = new anchor.BN(10);
 const vault_init = true;
 const airdropAmount = new anchor.BN(100 * LAMPORTS_PER_SOL);
+const new_fee_receiver = anchor.web3.Keypair.generate();
+const new_fee_percent = new anchor.BN(20);
 
-describe("Staking", () => {
+// Call the set_usdc_token method
+const newUsdcToken = anchor.web3.Keypair.generate().publicKey;
+
+describe("Ownership configuration and vault init", () => {
 	it("Vault Is initialized!", async () => {
-		// Add your test here.
-		const vaultPda = await getVaultPDA(Multiple_Program, "InitializedSeed");
-
-		const { depositInitialized } = await getVaultData(
-			vaultPda,
-			Multiple_Program
+		const rq = await connection.requestAirdrop(
+			owner.publicKey,
+			airdropAmount.toNumber()
 		);
-		if (depositInitialized) {
-			console.log("Vault is already initiated");
-		} else {
-			const rq = await connection.requestAirdrop(
-				owner.publicKey,
-				airdropAmount.toNumber()
-			);
-			await connection.confirmTransaction(rq, "confirmed");
-			const txHash_init = await Multiple_Program.methods
-				.initialize(
-					fee_receiver.publicKey,
-					usdc_token.publicKey,
-					minimum_deposit,
-					fee_percent,
-					vault_init
-				)
-				.accounts({
-					owner: owner.publicKey,
-					vault: vaultPda,
-					system_program: SystemProgram.programId,
-				})
-				.signers([owner])
-				.rpc();
+		await connection.confirmTransaction(rq, "confirmed");
+		const txHash_init = await Multiple_Program.methods
+			.initialize(
+				fee_receiver.publicKey,
+				usdc_token.publicKey,
+				minimum_deposit,
+				fee_percent,
+				vault_init
+			)
+			.accounts({
+				owner: owner.publicKey,
+			})
+			.signers([owner])
+			.rpc();
 
-			await connection.confirmTransaction(txHash_init, "confirmed");
-		}
-
-		let vaultInfo = await getVaultData(vaultPda, Multiple_Program);
-		expect(vaultInfo.depositInitialized).to.eq(vault_init);
+		await connection.confirmTransaction(txHash_init, "confirmed");
 	});
 
 	it("Revert when vault is initialized and try to init again", async () => {
@@ -99,11 +94,8 @@ describe("Staking", () => {
 			);
 		}
 	});
-});
 
-describe("Ownership configurations", () => {
-
-	it("Sets the USDC token in the vault", async () => {
+	it("Owner should be able to Sets the USDC token in the vault", async () => {
 		// Assume vaultPda is already available from a previous test or initialization
 		const vaultPda = await getVaultPDA(Multiple_Program, "InitializedSeed");
 
@@ -114,30 +106,16 @@ describe("Ownership configurations", () => {
 		);
 		await connection.confirmTransaction(rq, "confirmed");
 
-		// Call the set_usdc_token method
-		const newUsdcToken = anchor.web3.Keypair.generate().publicKey;
-		const txHash = await Multiple_Program.methods
-			.setUsdcToken(newUsdcToken)
-			.accounts({
-				user: owner.publicKey,
-				vault: vaultPda,
-				system_program: SystemProgram.programId,
-			})
-			.signers([owner])
-			.rpc();
-
-		await connection.confirmTransaction(txHash, "confirmed");
+		await setUsdcToken(Multiple_Program, owner, newUsdcToken);
 
 		// Fetch the vault data to verify the usdc_token was set
 		const vaultInfo = await getVaultData(vaultPda, Multiple_Program);
 		expect(vaultInfo.usdcToken.toBase58()).to.eq(newUsdcToken.toBase58());
 	});
 
-
-	it("Sets the Fee receiver and fee percent in the vault", async () => {
+	// should revert when attacker tries to set the USDC token
+	it("Revert when attacker tries to set the USDC token", async () => {
 		// Assume vaultPda is already available from a previous test or initialization
-		const vaultPda = await getVaultPDA(Multiple_Program, "InitializedSeed");
-
 		// Request airdrop to the owner (if needed)
 		const rq = await connection.requestAirdrop(
 			owner.publicKey,
@@ -145,28 +123,96 @@ describe("Ownership configurations", () => {
 		);
 		await connection.confirmTransaction(rq, "confirmed");
 
-    const new_fee_receiver = anchor.web3.Keypair.generate();
-    const new_fee_percent = new anchor.BN(20);
+		try {
+      const attackerUsdcToken = anchor.web3.Keypair.generate().publicKey;
+			// Your transaction code here
+			await setUsdcToken(Multiple_Program, attacker, attackerUsdcToken);
 
-		const txHash = await Multiple_Program.methods
-			.setFeeReceiverAndFeePercent(new_fee_receiver.publicKey, new_fee_percent)
-			.accounts({
-				user: owner.publicKey,
-				vault: vaultPda,
-				system_program: SystemProgram.programId,
-			})
-			.signers([owner])
-			.rpc();
+			// If the transaction succeeds, you can add assertions here
+			console.log("Transaction succeeded");
+		} catch (error) {
+			// Check for the specific error message
+			const expectedErrorMessage = "Caller is not owner";
+			assert.include(
+				error.message,
+				expectedErrorMessage,
+				"Error message does not match"
+			);
+		}
 
-		await connection.confirmTransaction(txHash, "confirmed");
-
+		const vaultPda = await getVaultPDA(Multiple_Program, "InitializedSeed");
 		// Fetch the vault data to verify the usdc_token was set
 		const vaultInfo = await getVaultData(vaultPda, Multiple_Program);
-		expect(vaultInfo.feeReceiver.toBase58()).to.eq(new_fee_receiver.publicKey.toBase58());
-    expect(vaultInfo.fee.toNumber()).to.eq(new_fee_percent.toNumber());
+		expect(vaultInfo.usdcToken.toBase58()).to.eq(
+			newUsdcToken.toBase58()
+		);
 	});
 
-  it("Sets the Fee receiver and fee percent in the vault", async () => {
+	it("Owner should be able to Sets the Fee receiver and fee percent in the vault", async () => {
+		// Request airdrop to the owner (if needed)
+		const rq = await connection.requestAirdrop(
+			owner.publicKey,
+			airdropAmount.toNumber()
+		);
+		await connection.confirmTransaction(rq, "confirmed");
+
+		await setFeeReceiverAndFeePercentage(
+			Multiple_Program,
+			owner,
+			new_fee_receiver.publicKey,
+			new_fee_percent
+		);
+
+		// Assume vaultPda is already available from a previous test or initialization
+		const vaultPda = await getVaultPDA(Multiple_Program, "InitializedSeed");
+		// Fetch the vault data to verify the usdc_token was set
+		const vaultInfo = await getVaultData(vaultPda, Multiple_Program);
+		expect(vaultInfo.feeReceiver.toBase58()).to.eq(
+			new_fee_receiver.publicKey.toBase58()
+		);
+		expect(vaultInfo.fee.toNumber()).to.eq(new_fee_percent.toNumber());
+	});
+
+  // should revert when attacker tries to set the fee receiver and fee percent
+  it("Revert when attacker tries to set the Fee receiver and fee percent in the vault", async () => {
+		// Assume vaultPda is already available from a previous test or initialization
+		// Request airdrop to the owner (if needed)
+		const rq = await connection.requestAirdrop(
+			owner.publicKey,
+			airdropAmount.toNumber()
+		);
+		await connection.confirmTransaction(rq, "confirmed");
+		const attacker_fee_percent = new anchor.BN(30);
+		try {
+      await setFeeReceiverAndFeePercentage(
+        Multiple_Program,
+        attacker,
+        new_fee_receiver.publicKey,
+        attacker_fee_percent
+      );
+
+      // If the transaction succeeds, you can add assertions here
+      console.log("Transaction succeeded");
+    } catch (error) {
+      // Check for the specific error message
+      const expectedErrorMessage = "Caller is not owner";
+      assert.include(
+        error.message,
+        expectedErrorMessage,
+        "Error message does not match"
+      );
+    }
+
+		// Assume vaultPda is already available from a previous test or initialization
+		const vaultPda = await getVaultPDA(Multiple_Program, "InitializedSeed");
+		const vaultInfo = await getVaultData(vaultPda, Multiple_Program);
+		expect(vaultInfo.feeReceiver.toBase58()).to.eq(
+			new_fee_receiver.publicKey.toBase58()
+		);
+		expect(vaultInfo.fee.toNumber()).to.eq(new_fee_percent.toNumber());
+	});
+
+	it("Owner should be able to Sets the Fee receiver and fee percent in the vault", async () => {
 		// Assume vaultPda is already available from a previous test or initialization
 		const vaultPda = await getVaultPDA(Multiple_Program, "InitializedSeed");
 
@@ -179,20 +225,136 @@ describe("Ownership configurations", () => {
 
 		const initializedDeposit = false;
 
-		const txHash = await Multiple_Program.methods
-			.setDepositStatus(initializedDeposit)
-			.accounts({
-				user: owner.publicKey,
-				vault: vaultPda,
-				system_program: SystemProgram.programId,
-			})
-			.signers([owner])
-			.rpc();
-
-		await connection.confirmTransaction(txHash, "confirmed");
+		await setDepositStatus(Multiple_Program, owner, false);
 
 		// Fetch the vault data to verify the usdc_token was set
 		const vaultInfo = await getVaultData(vaultPda, Multiple_Program);
-    expect(vaultInfo.depositInitialized).to.eq(initializedDeposit);
+		expect(vaultInfo.depositInitialized).to.eq(initializedDeposit);
 	});
+
+  // should revert when attacker tries to set the deposit status
+  it("Revert when attacker tries to set the deposit status", async () => {
+    // Assume vaultPda is already available from a previous test or initialization
+    // Request airdrop to the owner (if needed)
+    const rq = await connection.requestAirdrop(
+      owner.publicKey,
+      airdropAmount.toNumber()
+    );
+    await connection.confirmTransaction(rq, "confirmed");
+
+    try {
+      await setDepositStatus(Multiple_Program, attacker, true);
+
+      // If the transaction succeeds, you can add assertions here
+      console.log("Transaction succeeded");
+    } catch (error) {
+      // Check for the specific error message
+      const expectedErrorMessage = "Caller is not owner";
+      assert.include(
+        error.message,
+        expectedErrorMessage,
+        "Error message does not match"
+      );
+    }
+		const vaultPda = await getVaultPDA(Multiple_Program, "InitializedSeed");
+
+		// Fetch the vault data to verify the usdc_token was set
+		const vaultInfo = await getVaultData(vaultPda, Multiple_Program);
+		expect(vaultInfo.depositInitialized).to.eq(false);
+  });
 });
+
+// describe("Ownership configurations", () => {
+
+// 	it("Sets the USDC token in the vault", async () => {
+// 		// Assume vaultPda is already available from a previous test or initialization
+// 		const vaultPda = await getVaultPDA(Multiple_Program, "InitializedSeed");
+
+// 		// Request airdrop to the owner (if needed)
+// 		const rq = await connection.requestAirdrop(
+// 			owner.publicKey,
+// 			airdropAmount.toNumber()
+// 		);
+// 		await connection.confirmTransaction(rq, "confirmed");
+
+// 		// Call the set_usdc_token method
+// 		const newUsdcToken = anchor.web3.Keypair.generate().publicKey;
+// 		const txHash = await Multiple_Program.methods
+// 			.setUsdcToken(newUsdcToken)
+// 			.accounts({
+// 				user: owner.publicKey,
+// 				vault: vaultPda,
+// 				system_program: SystemProgram.programId,
+// 			})
+// 			.signers([owner])
+// 			.rpc();
+
+// 		await connection.confirmTransaction(txHash, "confirmed");
+
+// 		// Fetch the vault data to verify the usdc_token was set
+// 		const vaultInfo = await getVaultData(vaultPda, Multiple_Program);
+// 		expect(vaultInfo.usdcToken.toBase58()).to.eq(newUsdcToken.toBase58());
+// 	});
+
+// 	it("Sets the Fee receiver and fee percent in the vault", async () => {
+// 		// Assume vaultPda is already available from a previous test or initialization
+// 		const vaultPda = await getVaultPDA(Multiple_Program, "InitializedSeed");
+
+// 		// Request airdrop to the owner (if needed)
+// 		const rq = await connection.requestAirdrop(
+// 			owner.publicKey,
+// 			airdropAmount.toNumber()
+// 		);
+// 		await connection.confirmTransaction(rq, "confirmed");
+
+//     const new_fee_receiver = anchor.web3.Keypair.generate();
+//     const new_fee_percent = new anchor.BN(20);
+
+// 		const txHash = await Multiple_Program.methods
+// 			.setFeeReceiverAndFeePercent(new_fee_receiver.publicKey, new_fee_percent)
+// 			.accounts({
+// 				user: owner.publicKey,
+// 				vault: vaultPda,
+// 				system_program: SystemProgram.programId,
+// 			})
+// 			.signers([owner])
+// 			.rpc();
+
+// 		await connection.confirmTransaction(txHash, "confirmed");
+
+// 		// Fetch the vault data to verify the usdc_token was set
+// 		const vaultInfo = await getVaultData(vaultPda, Multiple_Program);
+// 		expect(vaultInfo.feeReceiver.toBase58()).to.eq(new_fee_receiver.publicKey.toBase58());
+//     expect(vaultInfo.fee.toNumber()).to.eq(new_fee_percent.toNumber());
+// 	});
+
+//   it("Sets the Fee receiver and fee percent in the vault", async () => {
+// 		// Assume vaultPda is already available from a previous test or initialization
+// 		const vaultPda = await getVaultPDA(Multiple_Program, "InitializedSeed");
+
+// 		// Request airdrop to the owner (if needed)
+// 		const rq = await connection.requestAirdrop(
+// 			owner.publicKey,
+// 			airdropAmount.toNumber()
+// 		);
+// 		await connection.confirmTransaction(rq, "confirmed");
+
+// 		const initializedDeposit = false;
+
+// 		const txHash = await Multiple_Program.methods
+// 			.setDepositStatus(initializedDeposit)
+// 			.accounts({
+// 				user: owner.publicKey,
+// 				vault: vaultPda,
+// 				system_program: SystemProgram.programId,
+// 			})
+// 			.signers([owner])
+// 			.rpc();
+
+// 		await connection.confirmTransaction(txHash, "confirmed");
+
+// 		// Fetch the vault data to verify the usdc_token was set
+// 		const vaultInfo = await getVaultData(vaultPda, Multiple_Program);
+//     expect(vaultInfo.depositInitialized).to.eq(initializedDeposit);
+// 	});
+// });
