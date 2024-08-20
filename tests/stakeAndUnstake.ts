@@ -1,6 +1,6 @@
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
-import { Multiple } from "../target/types/multiple";
+import { UsdcStake } from "../target/types/usdc_stake";
 import {
 	PublicKey,
 	Keypair,
@@ -12,22 +12,22 @@ import {
 	getVaultPDA,
 	setUsdcToken,
 	setFeeReceiverAndFeePercentage,
-	setDepositStatus,
+	setStakeStatus,
 	stake,
+	unstake,
 	getUserData,
 } from "./utils";
 import {
 	getOrCreateAssociatedTokenAccount,
 	createMint,
 	mintTo,
-	getMint,
 	getAccount,
 } from "@solana/spl-token";
 import { assert, expect } from "chai";
 
 anchor.setProvider(anchor.AnchorProvider.env());
 
-const Multiple_Program = anchor.workspace.Multiple as Program<Multiple>;
+const UsdcStake_Program = anchor.workspace.UsdcStake as Program<UsdcStake>;
 const provider = anchor.getProvider();
 const connection = provider.connection;
 
@@ -91,11 +91,11 @@ beforeEach(async () => {
 
 describe("Ownership configuration and vault init", async () => {
 	it("Vault Is initialized!", async () => {
-		const txHash_init = await Multiple_Program.methods
+		const txHash_init = await UsdcStake_Program.methods
 			.initialize(
 				fee_receiver.publicKey,
 				USDC,
-				new anchor.BN(1000), // minimum deposit
+				new anchor.BN(1000), // minimum stake
 				new anchor.BN(10), // fee percentage
 				true // vault initialization flag
 			)
@@ -109,14 +109,14 @@ describe("Ownership configuration and vault init", async () => {
 	});
 
 	it("Revert when vault is initialized and try to init again", async () => {
-		const vaultPda = await getVaultPDA(Multiple_Program, "InitializedSeed");
+		const vaultPda = await getVaultPDA(UsdcStake_Program, "InitializedSeed");
 
 		try {
-			await Multiple_Program.methods
+			await UsdcStake_Program.methods
 				.initialize(
 					fee_receiver.publicKey,
 					USDC,
-					new anchor.BN(1000), // minimum deposit
+					new anchor.BN(1000), // minimum stake
 					new anchor.BN(10), // fee percentage
 					true // vault initialization flag
 				)
@@ -146,7 +146,7 @@ describe("Ownership configuration and vault init", async () => {
 		);
 
 		try {
-			await setUsdcToken(Multiple_Program, attacker, attacker_usdc);
+			await setUsdcToken(UsdcStake_Program, attacker, attacker_usdc);
 
 			// If the transaction succeeds, you can add assertions here
 			console.log("Transaction succeeded");
@@ -159,8 +159,8 @@ describe("Ownership configuration and vault init", async () => {
 			);
 		}
 
-		const vaultPda = await getVaultPDA(Multiple_Program, "InitializedSeed");
-		const vaultInfo = await getVaultData(vaultPda, Multiple_Program);
+		const vaultPda = await getVaultPDA(UsdcStake_Program, "InitializedSeed");
+		const vaultInfo = await getVaultData(vaultPda, UsdcStake_Program);
 		expect(vaultInfo.usdcToken.toBase58()).to.eq(USDC.toBase58());
 	});
 
@@ -169,14 +169,14 @@ describe("Ownership configuration and vault init", async () => {
 		const new_fee_percent = new anchor.BN(20);
 
 		await setFeeReceiverAndFeePercentage(
-			Multiple_Program,
+			UsdcStake_Program,
 			owner,
 			new_fee_receiver.publicKey,
 			new_fee_percent
 		);
 
-		const vaultPda = await getVaultPDA(Multiple_Program, "InitializedSeed");
-		const vaultInfo = await getVaultData(vaultPda, Multiple_Program);
+		const vaultPda = await getVaultPDA(UsdcStake_Program, "InitializedSeed");
+		const vaultInfo = await getVaultData(vaultPda, UsdcStake_Program);
 		expect(vaultInfo.feeReceiver.toBase58()).to.eq(
 			new_fee_receiver.publicKey.toBase58()
 		);
@@ -188,7 +188,7 @@ describe("Ownership configuration and vault init", async () => {
 
 		try {
 			await setFeeReceiverAndFeePercentage(
-				Multiple_Program,
+				UsdcStake_Program,
 				attacker,
 				fee_receiver.publicKey,
 				attacker_fee_percent
@@ -204,25 +204,25 @@ describe("Ownership configuration and vault init", async () => {
 			);
 		}
 
-		const vaultPda = await getVaultPDA(Multiple_Program, "InitializedSeed");
-		// const vaultInfo = await getVaultData(vaultPda, Multiple_Program);
+		const vaultPda = await getVaultPDA(UsdcStake_Program, "InitializedSeed");
+		// const vaultInfo = await getVaultData(vaultPda, UsdcStake_Program);
 		// expect(vaultInfo.feeReceiver.toBase58()).to.eq(
 		// 	fee_receiver.publicKey.toBase58()
 		// );
 		// expect(vaultInfo.fee.toNumber()).to.eq(new anchor.BN(20).toNumber());
 	});
 
-	it("Owner should be able to set the deposit status", async () => {
-		await setDepositStatus(Multiple_Program, owner, false);
+	it("Owner should be able to set the stake status", async () => {
+		await setStakeStatus(UsdcStake_Program, owner, false);
 
-		const vaultPda = await getVaultPDA(Multiple_Program, "InitializedSeed");
-		const vaultInfo = await getVaultData(vaultPda, Multiple_Program);
-		expect(vaultInfo.depositInitialized).to.eq(false);
+		const vaultPda = await getVaultPDA(UsdcStake_Program, "InitializedSeed");
+		const vaultInfo = await getVaultData(vaultPda, UsdcStake_Program);
+		expect(vaultInfo.stakeInitialized).to.eq(false);
 	});
 
-	it("Revert when attacker tries to set the deposit status", async () => {
+	it("Revert when attacker tries to set the stake status", async () => {
 		try {
-			await setDepositStatus(Multiple_Program, attacker, true);
+			await setStakeStatus(UsdcStake_Program, attacker, true);
 
 			console.log("Transaction succeeded");
 		} catch (error) {
@@ -234,18 +234,18 @@ describe("Ownership configuration and vault init", async () => {
 			);
 		}
 
-		const vaultPda = await getVaultPDA(Multiple_Program, "InitializedSeed");
-		const vaultInfo = await getVaultData(vaultPda, Multiple_Program);
-		expect(vaultInfo.depositInitialized).to.eq(false);
+		const vaultPda = await getVaultPDA(UsdcStake_Program, "InitializedSeed");
+		const vaultInfo = await getVaultData(vaultPda, UsdcStake_Program);
+		expect(vaultInfo.stakeInitialized).to.eq(false);
 	});
 
-	it("Should be able to deposit", async () => {
-		const vaultPda = await getVaultPDA(Multiple_Program, "InitializedSeed");
+	it("Should be able to stake", async () => {
+		const vaultPda = await getVaultPDA(UsdcStake_Program, "InitializedSeed");
 		const programAuthorityPDA = await getVaultPDA(
-			Multiple_Program,
+			UsdcStake_Program,
 			"AuthoritySeed"
 		);
-		let vaultInfo = await getVaultData(vaultPda, Multiple_Program);
+		let vaultInfo = await getVaultData(vaultPda, UsdcStake_Program);
 		// console.log(vaultInfo);
 
 		const associatedTokenAccount = anchor.utils.token.associatedAddress({
@@ -287,7 +287,7 @@ describe("Ownership configuration and vault init", async () => {
 		expect(programAccountBeforeStake.amount.toString()).to.eq("0");
 
 		await stake(
-			Multiple_Program,
+			UsdcStake_Program,
 			owner,
 			new anchor.BN(10000000),
 			usdcTokenAccountProgram.address,
@@ -307,14 +307,14 @@ describe("Ownership configuration and vault init", async () => {
 		expect(ownerAccountAfterStake.amount.toString()).to.eq("99990000000");
 		expect(programAccountAfterStake.amount.toString()).to.eq("10000000"); // 10000000
 
-		vaultInfo = await getVaultData(vaultPda, Multiple_Program);
+		vaultInfo = await getVaultData(vaultPda, UsdcStake_Program);
 		expect(vaultInfo.totalStaked.toString()).to.eq("10000000");
 
-		let { stakedAmount } = await getUserData(owner, Multiple_Program);
+		let { stakedAmount } = await getUserData(owner, UsdcStake_Program);
 		expect(stakedAmount.toString()).to.eq("10000000");
 
     await stake(
-			Multiple_Program,
+			UsdcStake_Program,
 			owner,
 			new anchor.BN(10000000),
 			usdcTokenAccountProgram.address,
@@ -323,11 +323,27 @@ describe("Ownership configuration and vault init", async () => {
 			USDC
 		);
 
-    ({ stakedAmount } = await getUserData(owner, Multiple_Program));
+    ({ stakedAmount } = await getUserData(owner, UsdcStake_Program));
 		expect(stakedAmount.toString()).to.eq("20000000");
 
-    vaultInfo = await getVaultData(vaultPda, Multiple_Program);
+    vaultInfo = await getVaultData(vaultPda, UsdcStake_Program);
 		expect(vaultInfo.totalStaked.toString()).to.eq("20000000");
+
+    await unstake(
+      UsdcStake_Program,
+      owner,
+      new anchor.BN(10000000),
+      usdcTokenAccountProgram.address,
+      tokenAccount.address,
+      programAuthorityPDA,
+      USDC
+    );
+
+    ({ stakedAmount } = await getUserData(owner, UsdcStake_Program));
+		expect(stakedAmount.toString()).to.eq("10000000");
+
+		vaultInfo = await getVaultData(vaultPda, UsdcStake_Program);
+		expect(vaultInfo.totalStaked.toString()).to.eq("10000000");
 
 	});
 });

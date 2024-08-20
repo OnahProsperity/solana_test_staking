@@ -3,7 +3,7 @@ use anchor_lang::prelude::*;
 #[error_code]
 pub enum ErrorCode {
     #[msg("Deposit is already initialized")]
-    DepositInitialized,
+    StakeInitialized,
     #[msg("Owner has already been set")]
     OwnerAlreadySet,
     #[msg("Caller is not owner")]
@@ -20,4 +20,7 @@ pub enum ErrorCode {
     InvalidUserATAOwner,
     #[msg("The amount is zero.")]
     NoZeroAmount,
+    #[msg("The amount is greater than the user's staked amount.")]
+    InsufficientStakedAmount,
+    
 }

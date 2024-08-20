@@ -7,7 +7,7 @@ seeds = true
 
 
 [programs.localnet]
-multiple = "9bik7qGJDvUMDwzFHGm1GtYydaDpLsCsv5vHGephUcX"
+usdc_stake = "8aXdeZGPuDvHcW6MViBCud43VLXmnc9ZeSucJfWhnzQM"
 
 [registry]
 url = "https://api.apr.dev"

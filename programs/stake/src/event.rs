@@ -4,7 +4,7 @@ use anchor_lang::prelude::*;
 pub struct SetStates {
     pub fee_receiver: Pubkey,
     pub usdc_token: Pubkey,
-    pub minimum_deposit: u128,
+    pub minimum_stake: u128,
     pub fee: u128,
     pub timestamp: i64,
 }
