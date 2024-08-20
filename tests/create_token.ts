@@ -64,6 +64,9 @@ export const createToken = async (): Promise<token_data> => {
 	);
 	mintInfo = await getMint(connection, mint);
 
+    // get the balance of payer's token
+    const account = await getAccount(connection, tokenAccount.address);
+
 	return {
 		mint: mint,
 		mintAuthority: mintAuthority,

@@ -77,14 +77,14 @@ pub struct Deposit<'info> {
     #[account(mut)]
     /// CHECK: This is safe because we manually validate the owner and mint fields in the instruction logic.
     pub user_ata: AccountInfo<'info>,
+    pub token_program: Program<'info, Token>,
+    #[account(mut, seeds = [AUTHORITY_SEED], bump)]
+    pub program_authority: SystemAccount<'info>,
+    #[account(constraint = usdc_mint.key() == vault.usdc_token.key())]
+    /// CHECK: usdc mint must be the same as the strategy usdc mint
+    pub usdc_mint: AccountInfo<'info>,
 }
 
-    // pub token_program: Program<'info, Token>,
-    // #[account(mut, seeds = [AUTHORITY_SEED], bump)]
-    // pub program_authority: SystemAccount<'info>,
-    // #[account(constraint = usdc_mint.key() == vault.usdc_token.key())]
-    /// CHECK: usdc mint must be the same as the strategy usdc mint
-    // pub usdc_mint: AccountInfo<'info>,
 
 
 pub fn set_states_values(
@@ -186,35 +186,47 @@ pub fn set_deposit_status(ctx: Context<SetDepositStatus>, status: bool) -> Resul
 }
 
 //  create an internal function to deposit
-pub fn deposit(ctx: Context<Deposit>, amount: u64) -> Result<()> {
+pub fn stake(ctx: Context<Deposit>, stake_amount: u64) -> Result<()> {
     let usdc_token = &ctx.accounts.usdc_token;
-    // let user_ata = &ctx.accounts.user_ata;
-    // let program_authority = &ctx.accounts.program_authority;
-    // let usdc_mint = &ctx.accounts.usdc_mint;
+    let user_ata = &ctx.accounts.user_ata;
+    let program_authority = &ctx.accounts.program_authority;
+    let usdc_mint = &ctx.accounts.usdc_mint;
 
     // amount is not zero
-    if amount == 0 {
+    if stake_amount == 0 {
         return Err(ErrorCode::NoZeroAmount.into());
     }
 
     // Manually deserialize the `usdc_token` and `user_ata` accounts
     let usdc_token_account: TokenAccount = TokenAccount::try_deserialize(&mut &usdc_token.data.borrow_mut()[..])?;
-    // let user_ata_account: TokenAccount = TokenAccount::try_deserialize(&mut &user_ata.data.borrow_mut()[..])?;
-    // let user_ata_account = TokenAccount::try_from_slice(&user_ata.data.borrow())?;
+    let user_ata_account: TokenAccount = TokenAccount::try_deserialize(&mut &user_ata.data.borrow_mut()[..])?;
 
     // Not able to add some constraint, so need to Manually validate the constraints
-    // if usdc_token_account.owner != program_authority.key() {
-    //     return Err(ErrorCode::InvalidOwner.into());
-    // }
-    // if usdc_token_account.mint != usdc_mint.key() {
-    //     return Err(ErrorCode::InvalidMint.into());
-    // }
-    // if user_ata_account.owner != ctx.accounts.user.key() {
-    //     return Err(ErrorCode::InvalidUserATAOwner.into());
-    // }
-    // if user_ata_account.mint != usdc_mint.key() {
-    //     return Err(ErrorCode::InvalidMint.into());
-    // }
+    if usdc_token_account.owner != program_authority.key() {
+        return Err(ErrorCode::InvalidOwner.into());
+    }
+    if usdc_token_account.mint != usdc_mint.key() {
+        return Err(ErrorCode::InvalidMint.into());
+    }
+    if user_ata_account.owner != ctx.accounts.user.key() {
+        return Err(ErrorCode::InvalidUserATAOwner.into());
+    }
+    if user_ata_account.mint != usdc_mint.key() {
+        return Err(ErrorCode::InvalidMint.into());
+    }
+
+    let net_amount_transfer_accounts = TransferChecked {
+        from: ctx.accounts.user_ata.to_account_info(),
+        to: ctx.accounts.usdc_token.to_account_info(),
+        authority: ctx.accounts.user.to_account_info(), // User is the authority
+        mint: ctx.accounts.usdc_mint.to_account_info(),
+    };
+    let net_amount_context = CpiContext::new(
+        ctx.accounts.token_program.to_account_info(),
+        net_amount_transfer_accounts,
+    );
+    anchor_spl::token::transfer_checked(net_amount_context, stake_amount, 6)?;
+
     Ok(())
 }
 

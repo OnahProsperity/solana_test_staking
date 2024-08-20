@@ -100,7 +100,8 @@ export const deposit = async (
 	amount: anchor.BN,
 	usdcTokenAccount: PublicKey,
 	userAta: PublicKey,
-	// usdcMint: PublicKey
+	authoritySeed: PublicKey,
+	usdcMint: PublicKey
 ) => {
 	const userInfo = getUserInfosPDA(program, key.publicKey);
 	const vaultPda = await getVaultPDA(program, initSeed);
@@ -114,9 +115,8 @@ export const deposit = async (
 			system_program: anchor.web3.SystemProgram.programId,
 			usdcToken: usdcTokenAccount,
 			userAta: userAta,
-			// // tokenProgram: anchor.web3.TOKEN_PROGRAM_ID,
-			// // programAuthority: programAuthority,
-			// usdcMint: usdcMint,
+			programAuthority: authoritySeed,
+			usdcMint: usdcMint,
 		})
 		.signers([key])
 		.rpc();
