@@ -12,4 +12,12 @@ pub enum ErrorCode {
     NoZeroAddress,
     #[msg("Fee percent is too high")]
     FeePercentTooHigh,
+    #[msg("The owner of the usdc_token account is invalid.")]
+    InvalidOwner,
+    #[msg("The mint of the token account is invalid.")]
+    InvalidMint,
+    #[msg("The owner of the user's ATA is invalid.")]
+    InvalidUserATAOwner,
+    #[msg("The amount is zero.")]
+    NoZeroAmount,
 }

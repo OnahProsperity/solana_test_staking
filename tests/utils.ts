@@ -47,14 +47,11 @@ export const setUsdcToken = async (
 	key: Keypair,
 	usdcToken: PublicKey
 ) => {
-	const vaultPda = await getVaultPDA(program, initSeed);
 
 	const txHash = await program.methods
 		.setUsdcToken(usdcToken)
 		.accounts({
 			user: key.publicKey,
-			vault: vaultPda,
-			system_program: SystemProgram.programId,
 		})
 		.signers([key])
 		.rpc();
@@ -68,14 +65,11 @@ export const setFeeReceiverAndFeePercentage = async (
 	feeReceiver: PublicKey,
 	fee: anchor.BN
 ) => {
-	const vaultPda = await getVaultPDA(program, initSeed);
 
 	const txHash = await program.methods
 		.setFeeReceiverAndFeePercent(feeReceiver, fee)
 		.accounts({
 			user: key.publicKey,
-			vault: vaultPda,
-			system_program: SystemProgram.programId,
 		})
 		.signers([key])
 		.rpc();
@@ -88,14 +82,10 @@ export const setDepositStatus = async (
 	key: Keypair,
 	status: boolean
 ) => {
-	const vaultPda = await getVaultPDA(program, initSeed);
-
 	const txHash = await program.methods
 		.setDepositStatus(status)
 		.accounts({
 			user: key.publicKey,
-			vault: vaultPda,
-			system_program: SystemProgram.programId,
 		})
 		.signers([key])
 		.rpc();
@@ -103,3 +93,42 @@ export const setDepositStatus = async (
 	await connection.confirmTransaction(txHash, "confirmed");
 }
 
+// deposit
+export const deposit = async (
+	program: Program<Multiple>,
+	key: Keypair,
+	amount: anchor.BN,
+	usdcTokenAccount: PublicKey,
+	userAta: PublicKey,
+	// usdcMint: PublicKey
+) => {
+	const userInfo = getUserInfosPDA(program, key.publicKey);
+	const vaultPda = await getVaultPDA(program, initSeed);
+
+	const txHash = await program.methods
+		.deposit(amount)
+		.accounts({
+			user: key.publicKey,
+			userInfos: userInfo,
+			vault: vaultPda,
+			system_program: anchor.web3.SystemProgram.programId,
+			usdcToken: usdcTokenAccount,
+			userAta: userAta,
+			// // tokenProgram: anchor.web3.TOKEN_PROGRAM_ID,
+			// // programAuthority: programAuthority,
+			// usdcMint: usdcMint,
+		})
+		.signers([key])
+		.rpc();
+
+	await connection.confirmTransaction(txHash, "confirmed");
+};
+
+const getUserInfosPDA = (
+	program: Program<Multiple>,
+	walletPublicKey: PublicKey
+) =>
+	PublicKey.findProgramAddressSync(
+		[Buffer.from("USER_INFOS"), walletPublicKey.toBuffer()],
+		program.programId
+	)[0];

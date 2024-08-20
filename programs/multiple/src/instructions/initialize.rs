@@ -2,8 +2,10 @@
 use crate::error::ErrorCode;
 use crate::event::*;
 use anchor_lang::prelude::*;
+use anchor_spl::token::{Token, TokenAccount, TransferChecked};
 
 pub const INIT_SEED: &[u8] = b"InitializedSeed";
+pub const AUTHORITY_SEED: &[u8] = b"AuthoritySeed";
 
 #[derive(Accounts)]
 pub struct Initialize<'info> {
@@ -52,6 +54,37 @@ pub struct SetDepositStatus<'info> {
     pub user: Signer<'info>,
     pub system_program: Program<'info, System>,
 }
+
+#[account]
+#[derive(InitSpace)]
+pub struct UserBalance {
+    pub shares: u128,
+}
+
+
+#[derive(Accounts)]
+pub struct Deposit<'info> {
+    #[account(mut)]
+    pub user: Signer<'info>,
+    #[account(init_if_needed, payer = user, space = 8 + UserBalance::INIT_SPACE, seeds = [b"USER_INFOS".as_ref(), user.key().as_ref()], bump)]
+    pub user_infos: Account<'info, UserBalance>,
+    #[account(mut, seeds = [INIT_SEED], bump)]
+    pub vault: Account<'info, InitializeVault>,
+    pub system_program: Program<'info, System>,
+    #[account(mut)]
+    /// CHECK: This is safe because we manually validate the owner and mint fields in the instruction logic.
+    pub usdc_token: AccountInfo<'info>,
+    #[account(mut)]
+    /// CHECK: This is safe because we manually validate the owner and mint fields in the instruction logic.
+    pub user_ata: AccountInfo<'info>,
+}
+
+    // pub token_program: Program<'info, Token>,
+    // #[account(mut, seeds = [AUTHORITY_SEED], bump)]
+    // pub program_authority: SystemAccount<'info>,
+    // #[account(constraint = usdc_mint.key() == vault.usdc_token.key())]
+    /// CHECK: usdc mint must be the same as the strategy usdc mint
+    // pub usdc_mint: AccountInfo<'info>,
 
 
 pub fn set_states_values(
@@ -149,6 +182,39 @@ pub fn set_deposit_status(ctx: Context<SetDepositStatus>, status: bool) -> Resul
     emit!(InitializedStatus {
         status: vault.deposit_initialized,
     });
+    Ok(())
+}
+
+//  create an internal function to deposit
+pub fn deposit(ctx: Context<Deposit>, amount: u64) -> Result<()> {
+    let usdc_token = &ctx.accounts.usdc_token;
+    // let user_ata = &ctx.accounts.user_ata;
+    // let program_authority = &ctx.accounts.program_authority;
+    // let usdc_mint = &ctx.accounts.usdc_mint;
+
+    // amount is not zero
+    if amount == 0 {
+        return Err(ErrorCode::NoZeroAmount.into());
+    }
+
+    // Manually deserialize the `usdc_token` and `user_ata` accounts
+    let usdc_token_account: TokenAccount = TokenAccount::try_deserialize(&mut &usdc_token.data.borrow_mut()[..])?;
+    // let user_ata_account: TokenAccount = TokenAccount::try_deserialize(&mut &user_ata.data.borrow_mut()[..])?;
+    // let user_ata_account = TokenAccount::try_from_slice(&user_ata.data.borrow())?;
+
+    // Not able to add some constraint, so need to Manually validate the constraints
+    // if usdc_token_account.owner != program_authority.key() {
+    //     return Err(ErrorCode::InvalidOwner.into());
+    // }
+    // if usdc_token_account.mint != usdc_mint.key() {
+    //     return Err(ErrorCode::InvalidMint.into());
+    // }
+    // if user_ata_account.owner != ctx.accounts.user.key() {
+    //     return Err(ErrorCode::InvalidUserATAOwner.into());
+    // }
+    // if user_ata_account.mint != usdc_mint.key() {
+    //     return Err(ErrorCode::InvalidMint.into());
+    // }
     Ok(())
 }
 

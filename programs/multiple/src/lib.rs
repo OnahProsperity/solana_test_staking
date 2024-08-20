@@ -39,4 +39,8 @@ pub mod multiple {
     pub fn set_deposit_status(ctx: Context<SetDepositStatus>, status: bool) -> Result<()> {
         initialize::set_deposit_status(ctx, status)
     }
+
+    pub fn deposit(ctx: Context<Deposit>, amount: u64) -> Result<()> {
+        initialize::deposit(ctx, amount)
+    }
 }
