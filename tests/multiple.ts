@@ -13,7 +13,8 @@ import {
 	setUsdcToken,
 	setFeeReceiverAndFeePercentage,
 	setDepositStatus,
-	deposit,
+	stake,
+	getUserData,
 } from "./utils";
 import {
 	getOrCreateAssociatedTokenAccount,
@@ -239,12 +240,13 @@ describe("Ownership configuration and vault init", async () => {
 	});
 
 	it("Should be able to deposit", async () => {
-		// const vaultPda = await getVaultPDA(Multiple_Program, "InitializedSeed");
+		const vaultPda = await getVaultPDA(Multiple_Program, "InitializedSeed");
 		const programAuthorityPDA = await getVaultPDA(
 			Multiple_Program,
 			"AuthoritySeed"
 		);
-		// const vaultInfo = await getVaultData(vaultPda, Multiple_Program);
+		let vaultInfo = await getVaultData(vaultPda, Multiple_Program);
+		// console.log(vaultInfo);
 
 		const associatedTokenAccount = anchor.utils.token.associatedAddress({
 			mint: USDC,
@@ -273,26 +275,59 @@ describe("Ownership configuration and vault init", async () => {
 			true
 		);
 
-    const ownerAccountBeforeStake = await getAccount(connection, tokenAccount.address);
-    const programAccountBeforeStake = await getAccount(connection, usdcTokenAccountProgram.address);
-    expect(ownerAccountBeforeStake.amount.toString()).to.eq("100000000000");
-    expect(programAccountBeforeStake.amount.toString()).to.eq("0");
+		const ownerAccountBeforeStake = await getAccount(
+			connection,
+			tokenAccount.address
+		);
+		const programAccountBeforeStake = await getAccount(
+			connection,
+			usdcTokenAccountProgram.address
+		);
+		expect(ownerAccountBeforeStake.amount.toString()).to.eq("100000000000");
+		expect(programAccountBeforeStake.amount.toString()).to.eq("0");
 
-
-
-		await deposit(
+		await stake(
 			Multiple_Program,
 			owner,
 			new anchor.BN(10000000),
 			usdcTokenAccountProgram.address,
 			tokenAccount.address,
 			programAuthorityPDA,
-			USDC,
+			USDC
 		);
 
-    const ownerAccountAfterStake = await getAccount(connection, tokenAccount.address);
-    const programAccountAfterStake = await getAccount(connection, usdcTokenAccountProgram.address);
-    expect(ownerAccountAfterStake.amount.toString()).to.eq("99990000000");
-    expect(programAccountAfterStake.amount.toString()).to.eq("10000000");
+		const ownerAccountAfterStake = await getAccount(
+			connection,
+			tokenAccount.address
+		);
+		const programAccountAfterStake = await getAccount(
+			connection,
+			usdcTokenAccountProgram.address
+		);
+		expect(ownerAccountAfterStake.amount.toString()).to.eq("99990000000");
+		expect(programAccountAfterStake.amount.toString()).to.eq("10000000"); // 10000000
+
+		vaultInfo = await getVaultData(vaultPda, Multiple_Program);
+		expect(vaultInfo.totalStaked.toString()).to.eq("10000000");
+
+		let { stakedAmount } = await getUserData(owner, Multiple_Program);
+		expect(stakedAmount.toString()).to.eq("10000000");
+
+    await stake(
+			Multiple_Program,
+			owner,
+			new anchor.BN(10000000),
+			usdcTokenAccountProgram.address,
+			tokenAccount.address,
+			programAuthorityPDA,
+			USDC
+		);
+
+    ({ stakedAmount } = await getUserData(owner, Multiple_Program));
+		expect(stakedAmount.toString()).to.eq("20000000");
+
+    vaultInfo = await getVaultData(vaultPda, Multiple_Program);
+		expect(vaultInfo.totalStaked.toString()).to.eq("20000000");
+
 	});
 });

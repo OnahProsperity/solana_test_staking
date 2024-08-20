@@ -10,6 +10,7 @@ interface Vault {
 	minimumDeposit: anchor.BN;
 	fee: anchor.BN;
 	mbps: anchor.BN;
+	totalStaked: anchor.BN;
 	depositInitialized: boolean;
 }
 const initSeed = "InitializedSeed";
@@ -30,8 +31,18 @@ export const getVaultData = async (
 			minimumDeposit: vaultAccount.minimumDeposit,
 			fee: vaultAccount.fee,
 			mbps: vaultAccount.mbps,
+			totalStaked: vaultAccount.totalStaked,
 			depositInitialized: vaultAccount.depositInitialized,
 		};
+}
+
+export const getUserData = async (
+	userKey: Keypair,
+	program: Program<Multiple>
+) => {
+	const userPda = getUserInfosPDA(program, userKey.publicKey);
+	const userAccount = await program.account.userStake.fetch(userPda);
+	return userAccount;
 }
 
 export const getVaultPDA = async (program: Program<Multiple>, seed: string): Promise<PublicKey> => {
@@ -94,7 +105,7 @@ export const setDepositStatus = async (
 }
 
 // deposit
-export const deposit = async (
+export const stake = async (
 	program: Program<Multiple>,
 	key: Keypair,
 	amount: anchor.BN,
@@ -107,7 +118,7 @@ export const deposit = async (
 	const vaultPda = await getVaultPDA(program, initSeed);
 
 	const txHash = await program.methods
-		.deposit(amount)
+		.stake(amount)
 		.accounts({
 			user: key.publicKey,
 			userInfos: userInfo,

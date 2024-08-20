@@ -26,6 +26,7 @@ pub struct InitializeVault {
     pub fee: u128,
     pub mbps: u128,
     pub deposit_initialized: bool,
+    pub total_staked: u128,
 }
 
 #[derive(Accounts)]
@@ -57,8 +58,8 @@ pub struct SetDepositStatus<'info> {
 
 #[account]
 #[derive(InitSpace)]
-pub struct UserBalance {
-    pub shares: u128,
+pub struct UserStake {
+    pub staked_amount: u128,
 }
 
 
@@ -66,8 +67,8 @@ pub struct UserBalance {
 pub struct Deposit<'info> {
     #[account(mut)]
     pub user: Signer<'info>,
-    #[account(init_if_needed, payer = user, space = 8 + UserBalance::INIT_SPACE, seeds = [b"USER_INFOS".as_ref(), user.key().as_ref()], bump)]
-    pub user_infos: Account<'info, UserBalance>,
+    #[account(init_if_needed, payer = user, space = 8 + UserStake::INIT_SPACE, seeds = [b"USER_INFOS".as_ref(), user.key().as_ref()], bump)]
+    pub user_infos: Account<'info, UserStake>,
     #[account(mut, seeds = [INIT_SEED], bump)]
     pub vault: Account<'info, InitializeVault>,
     pub system_program: Program<'info, System>,
@@ -112,6 +113,7 @@ pub fn set_states_values(
     vault.fee = fee_percent; // 0.1%
     vault.mbps = 1000;
     vault.deposit_initialized = vault_init;
+    vault.total_staked = 0;
     // emit the SetStates event
     emit!(SetStates {
         fee_receiver: vault.fee_receiver,
@@ -191,6 +193,8 @@ pub fn stake(ctx: Context<Deposit>, stake_amount: u64) -> Result<()> {
     let user_ata = &ctx.accounts.user_ata;
     let program_authority = &ctx.accounts.program_authority;
     let usdc_mint = &ctx.accounts.usdc_mint;
+    let user_stake = &mut ctx.accounts.user_infos;
+    let vault = &mut ctx.accounts.vault;
 
     // amount is not zero
     if stake_amount == 0 {
@@ -227,14 +231,21 @@ pub fn stake(ctx: Context<Deposit>, stake_amount: u64) -> Result<()> {
     );
     anchor_spl::token::transfer_checked(net_amount_context, stake_amount, 6)?;
 
+    // update the total staked amount and check for overflow
+    vault.total_staked = vault.total_staked.checked_add(stake_amount as u128).unwrap();
+
+    // update the user stake amount and check for overflow
+    user_stake.staked_amount = user_stake.staked_amount.checked_add(stake_amount as u128).unwrap();
+
+
     Ok(())
 }
 
-fn to_decimal(amount: u64, decimals: u32) -> f64 {
-    amount as f64 / 10u64.pow(decimals) as f64
-}
+// fn to_decimal(amount: u64, decimals: u32) -> f64 {
+//     amount as f64 / 10u64.pow(decimals) as f64
+// }
 
-fn from_decimal(amount: f64, decimals: u32) -> u64 {
-    (amount * 10u64.pow(decimals) as f64) as u64
-}
+// fn from_decimal(amount: f64, decimals: u32) -> u64 {
+//     (amount * 10u64.pow(decimals) as f64) as u64
+// }
 
